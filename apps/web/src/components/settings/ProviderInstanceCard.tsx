@@ -550,9 +550,7 @@ export function ProviderInstanceCard({
   const titleTailNode = (
     <>
       {headerAction ? (
-        <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center">
-          {headerAction}
-        </span>
+        <span className="inline-flex min-h-5 shrink-0 items-center">{headerAction}</span>
       ) : null}
       {onDelete ? (
         <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center">

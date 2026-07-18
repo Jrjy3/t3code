@@ -132,6 +132,12 @@ const ClaudeCodexProxyManagerLive = ClaudeCodexProxyManager.layer.pipe(
   Layer.provide(NetService.layer),
 );
 
+const ProviderRegistryLayerLive = ProviderRegistryLive.pipe(
+  Layer.provideMerge(
+    ProviderInstanceRegistryHydrationLive.pipe(Layer.provideMerge(ClaudeCodexProxyManagerLive)),
+  ),
+);
+
 const HttpServerLive = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* ServerConfig.ServerConfig;
@@ -308,13 +314,12 @@ const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
   Layer.provideMerge(Layer.mergeAll(TerminalLayerLive, PreviewLayerLive)),
   Layer.provideMerge(PersistenceLayerLive),
   Layer.provideMerge(Keybindings.layer),
-  Layer.provideMerge(Layer.merge(ProviderRegistryLive, ClaudeCodexProxyManagerLive)),
+  Layer.provideMerge(ProviderRegistryLayerLive),
   // The instance registry is the new routing keystone — text generation,
   // adapter lookup, and runtime ingestion all resolve `ProviderInstanceId`
   // through this layer. Built-in drivers come from `BUILT_IN_DRIVERS`;
   // `providerInstances` hydration merges `settings.providers.<kind>`
   // with explicit `providerInstances` entries on boot.
-  Layer.provideMerge(ProviderInstanceRegistryHydrationLive),
   // Shared native/canonical NDJSON writers used by both the per-instance
   // drivers (native stream, written from inside each `<X>Adapter`) and
   // `ProviderService` (canonical stream, written after event normalization).
