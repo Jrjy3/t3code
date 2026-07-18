@@ -17,11 +17,11 @@ import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
+import * as Stream from "effect/Stream";
 import { HttpClient } from "effect/unstable/http";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import { ServerConfig } from "../../config.ts";
-import { collectStreamAsString } from "../providerSnapshot.ts";
 
 const FIRST_RUNTIME_PORT = 18_765;
 const LAST_RUNTIME_PORT = 18_784;
@@ -314,8 +314,25 @@ export const make = Effect.gen(function* () {
       ),
     );
 
+  const openAuthorizationUrl = (authorizationUrl: string) => {
+    if (platform !== "win32") return Effect.void;
+    return spawner
+      .spawn(
+        ChildProcess.make("rundll32.exe", ["url.dll,FileProtocolHandler", authorizationUrl], {
+          shell: false,
+          stdout: "ignore",
+          stderr: "ignore",
+        }),
+      )
+      .pipe(
+        Effect.flatMap((child) => child.exitCode),
+        Effect.ignore,
+        Effect.scoped,
+      );
+  };
+
   const runAuthCommand = Effect.fn("ClaudeCodexProxyManager.runAuthCommand")(
-    function* (args: ReadonlyArray<string>) {
+    function* (args: ReadonlyArray<string>, onOutput?: (output: string) => Effect.Effect<void>) {
       const executable = yield* installer.resolve;
       if (executable.status !== "installed") {
         return yield* new ClaudeCodexProxyError({
@@ -331,8 +348,21 @@ export const make = Effect.gen(function* () {
           stderr: "pipe",
         }),
       );
+      const collectOutput = <E>(stream: Stream.Stream<Uint8Array, E>): Effect.Effect<string, E> => {
+        const decoder = new TextDecoder();
+        return Stream.runFoldEffect(
+          stream,
+          () => "",
+          (output, chunk) => {
+            const nextOutput = `${output}${decoder.decode(chunk, { stream: true })}`;
+            return onOutput === undefined
+              ? Effect.succeed(nextOutput)
+              : Effect.map(onOutput(nextOutput), () => nextOutput);
+          },
+        );
+      };
       const [stdout, stderr, code] = yield* Effect.all(
-        [collectStreamAsString(child.stdout), collectStreamAsString(child.stderr), child.exitCode],
+        [collectOutput(child.stdout), collectOutput(child.stderr), child.exitCode],
         { concurrency: "unbounded" },
       );
       return { stdout: redactOutput(stdout), stderr: redactOutput(stderr), code: Number(code) };
@@ -358,13 +388,19 @@ export const make = Effect.gen(function* () {
       }
       yield* Ref.set(authStateRef, "signingIn");
       yield* report({ type: "progress", stage: "starting" });
-      const result = yield* runAuthCommand(["codex", "auth", "login"]);
-      const authorizationUrl = `${result.stdout}\n${result.stderr}`.match(
-        AUTHORIZATION_URL_PATTERN,
-      )?.[0];
-      if (authorizationUrl) {
-        yield* report({ type: "progress", stage: "waitingForBrowser", authorizationUrl });
-      }
+      const reportedAuthorizationUrl = yield* Ref.make(false);
+      const handleOutput = (output: string) =>
+        Effect.gen(function* () {
+          const authorizationUrl = output.match(AUTHORIZATION_URL_PATTERN)?.[0];
+          if (!authorizationUrl) return;
+          const shouldReport = yield* Ref.modify(reportedAuthorizationUrl, (reported) =>
+            reported ? [false, true] : [true, true],
+          );
+          if (!shouldReport) return;
+          yield* report({ type: "progress", stage: "waitingForBrowser", authorizationUrl });
+          yield* openAuthorizationUrl(authorizationUrl);
+        });
+      const result = yield* runAuthCommand(["codex", "auth", "login"], handleOutput);
       if (result.code !== 0) {
         yield* Ref.set(authStateRef, "signedOut");
         return yield* new ClaudeCodexProxyError({
