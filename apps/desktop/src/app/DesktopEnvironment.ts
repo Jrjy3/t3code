@@ -77,6 +77,11 @@ export class DesktopEnvironment extends Context.Service<
 >()("@t3tools/desktop/app/DesktopEnvironment") {}
 
 const APP_BASE_NAME = "T3 Code";
+const HARNESS_SWITCHING_VERSION_PATTERN = /-harness-switching\.\d+$/u;
+
+export function isHarnessSwitchingDesktopVersion(version: string): boolean {
+  return HARNESS_SWITCHING_VERSION_PATTERN.test(version);
+}
 
 function resolveDesktopAppStageLabel(input: {
   readonly isDevelopment: boolean;
@@ -93,6 +98,13 @@ function resolveDesktopAppBranding(input: {
   readonly isDevelopment: boolean;
   readonly appVersion: string;
 }): DesktopAppBranding {
+  if (!input.isDevelopment && isHarnessSwitchingDesktopVersion(input.appVersion)) {
+    return {
+      baseName: "T3 Code",
+      stageLabel: "Alpha",
+      displayName: "T3 Code - Harness Switching",
+    };
+  }
   const stageLabel = resolveDesktopAppStageLabel(input);
   return {
     baseName: APP_BASE_NAME,
@@ -155,8 +167,16 @@ const make = Effect.fn("desktop.environment.make")(function* (
     appVersion: input.appVersion,
   });
   const displayName = branding.displayName;
-  const stateDir = path.join(baseDir, isDevelopment ? "dev" : "userdata");
-  const userDataDirName = isDevelopment ? "t3code-dev" : "t3code";
+  const isHarnessSwitching = !isDevelopment && isHarnessSwitchingDesktopVersion(input.appVersion);
+  const stateDir = path.join(
+    baseDir,
+    isDevelopment ? "dev" : isHarnessSwitching ? "harness-switching" : "userdata",
+  );
+  const userDataDirName = isDevelopment
+    ? "t3code-dev"
+    : isHarnessSwitching
+      ? "t3code-harness-switching"
+      : "t3code";
   const legacyUserDataDirName = isDevelopment ? "T3 Code (Dev)" : "T3 Code (Alpha)";
   const resourcesPath = input.resourcesPath;
 
@@ -197,7 +217,11 @@ const make = Effect.fn("desktop.environment.make")(function* (
     branding,
     displayName,
     appUserModelId: Option.getOrElse(config.appUserModelIdOverride, () =>
-      isDevelopment ? "com.t3tools.t3code.dev" : "com.t3tools.t3code",
+      isDevelopment
+        ? "com.t3tools.t3code.dev"
+        : isHarnessSwitching
+          ? "com.t3tools.t3code.harnessswitching"
+          : "com.t3tools.t3code",
     ),
     linuxDesktopEntryName: isDevelopment ? "t3code-dev.desktop" : "t3code.desktop",
     linuxWmClass: isDevelopment ? "t3code-dev" : "t3code",

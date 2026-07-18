@@ -95,6 +95,19 @@ describe("DesktopEnvironment", () => {
     }),
   );
 
+  it.effect(
+    "isolates the Harness Switching prerelease from the standard desktop installation",
+    () =>
+      Effect.gen(function* () {
+        const environment = yield* makeEnvironment({ appVersion: "0.0.29-harness-switching.1" });
+
+        assert.equal(environment.displayName, "T3 Code - Harness Switching");
+        assert.isTrue(environment.stateDir.endsWith("harness-switching"));
+        assert.equal(environment.userDataDirName, "t3code-harness-switching");
+        assert.equal(environment.appUserModelId, "com.t3tools.t3code.harnessswitching");
+      }),
+  );
+
   it.effect("uses a configured app user model id override", () =>
     Effect.gen(function* () {
       const environment = yield* makeEnvironment(

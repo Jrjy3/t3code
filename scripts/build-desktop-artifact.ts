@@ -36,6 +36,8 @@ import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 const LINUX_ICON_SIZES = [16, 22, 24, 32, 48, 64, 128, 256, 512] as const;
 const DESKTOP_APP_ID = "com.t3tools.t3code";
+const HARNESS_SWITCHING_DESKTOP_APP_ID = "com.t3tools.t3code.harnessswitching";
+const HARNESS_SWITCHING_VERSION_PATTERN = /-harness-switching\.\d+$/u;
 const APPLE_TEAM_ID_PATTERN = /^[A-Z0-9]{10}$/u;
 
 const BuildPlatform = Schema.Literals(["mac", "linux", "win"]);
@@ -1329,6 +1331,16 @@ export function resolveDesktopUpdateChannel(version: string): "latest" | "nightl
   return /-nightly\.\d{8}\.\d+$/.test(version) ? "nightly" : "latest";
 }
 
+export function isHarnessSwitchingDesktopVersion(version: string): boolean {
+  return HARNESS_SWITCHING_VERSION_PATTERN.test(version);
+}
+
+export function resolveDesktopAppId(version: string): string {
+  return isHarnessSwitchingDesktopVersion(version)
+    ? HARNESS_SWITCHING_DESKTOP_APP_ID
+    : DESKTOP_APP_ID;
+}
+
 export function resolveDesktopWebAssetBrand(version: string): WebAssetBrand {
   return resolveWebAssetBrandForChannel(resolveDesktopUpdateChannel(version));
 }
@@ -1367,6 +1379,9 @@ export function resolvePackageManagerUserAgent(packageManager: string): string {
 }
 
 export function resolveDesktopProductName(version: string): string {
+  if (isHarnessSwitchingDesktopVersion(version)) {
+    return "T3 Code - Harness Switching";
+  }
   return resolveDesktopUpdateChannel(version) === "nightly"
     ? "T3 Code (Nightly)"
     : (desktopPackageJson.productName ?? "T3 Code");
@@ -1387,9 +1402,11 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
     | undefined,
 ) {
   const buildConfig: Record<string, unknown> = {
-    appId: DESKTOP_APP_ID,
+    appId: resolveDesktopAppId(version),
     productName: resolveDesktopProductName(version),
-    artifactName: "T3-Code-${version}-${arch}.${ext}",
+    artifactName: isHarnessSwitchingDesktopVersion(version)
+      ? "T3-Code-Harness-Switching-${version}-${arch}.${ext}"
+      : "T3-Code-${version}-${arch}.${ext}",
     directories: {
       buildResources: "apps/desktop/resources",
     },
@@ -1428,8 +1445,12 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       category: "public.app-category.developer-tools",
       protocols: [
         {
-          name: "T3 Code",
-          schemes: ["t3code", "t3code-dev"],
+          name: isHarnessSwitchingDesktopVersion(version)
+            ? "T3 Code - Harness Switching"
+            : "T3 Code",
+          schemes: isHarnessSwitchingDesktopVersion(version)
+            ? ["t3code-harness-switching"]
+            : ["t3code", "t3code-dev"],
         },
       ],
       ...(macPasskeySigning
