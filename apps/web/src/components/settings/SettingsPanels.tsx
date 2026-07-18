@@ -66,6 +66,8 @@ import { Switch } from "../ui/switch";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { AddProviderInstanceDialog } from "./AddProviderInstanceDialog";
+import { ClaudeCodexProxySetupDialog } from "./ClaudeCodexProxySetupDialog";
+import { Badge } from "../ui/badge";
 import {
   canOneClickUpdateProviderCandidate,
   collectProviderUpdateCandidates,
@@ -88,6 +90,15 @@ import {
 } from "./settingsLayout";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { useAtomCommand } from "../../state/use-atom-command";
+
+function isClaudeGptProviderConfig(config: unknown): boolean {
+  return (
+    typeof config === "object" &&
+    config !== null &&
+    "inferenceBackend" in config &&
+    config.inferenceBackend === "chatgptCodexProxy"
+  );
+}
 
 const THEME_OPTIONS = [
   {
@@ -996,8 +1007,12 @@ export function ProviderSettingsPanel() {
   const updateProvider = useAtomCommand(serverEnvironment.updateProvider, {
     reportFailure: false,
   });
+  const logoutClaudeCodexProxy = useAtomCommand(serverEnvironment.claudeCodexProxyLogout, {
+    reportFailure: false,
+  });
   const [isRefreshingProviders, setIsRefreshingProviders] = useState(false);
   const [isAddInstanceDialogOpen, setIsAddInstanceDialogOpen] = useState(false);
+  const [isClaudeGptSetupOpen, setIsClaudeGptSetupOpen] = useState(false);
   const [updatingProviderDrivers, setUpdatingProviderDrivers] = useState<
     ReadonlySet<ProviderDriverKind>
   >(() => new Set());
@@ -1209,6 +1224,45 @@ export function ProviderSettingsPanel() {
     });
   };
 
+  const removeClaudeGptIntegration = async () => {
+    const confirmed = await ensureLocalApi().dialogs.confirm(
+      "Remove every Claude + GPT profile? Active sessions using them will stop. Native Claude and Codex are unchanged.",
+    );
+    if (!confirmed) return;
+    const proxyIds = new Set(
+      Object.entries(settings.providerInstances ?? {})
+        .filter(([, instance]) => isClaudeGptProviderConfig(instance.config))
+        .map(([id]) => id),
+    );
+    updateSettings({
+      providerInstances: Object.fromEntries(
+        Object.entries(settings.providerInstances ?? {}).filter(([id]) => !proxyIds.has(id)),
+      ),
+      providerModelPreferences: Object.fromEntries(
+        Object.entries(settings.providerModelPreferences ?? {}).filter(([id]) => !proxyIds.has(id)),
+      ),
+      favorites: (settings.favorites ?? []).filter((favorite) => !proxyIds.has(favorite.provider)),
+    });
+    if (!primaryEnvironment) return;
+    const result = await logoutClaudeCodexProxy({
+      environmentId: primaryEnvironment.environmentId,
+      input: {},
+    });
+    toastManager.add(
+      result._tag === "Failure"
+        ? {
+            type: "warning",
+            title: "Claude + GPT removed",
+            description: "The profiles were removed, but proxy credentials may remain.",
+          }
+        : {
+            type: "success",
+            title: "Claude + GPT removed",
+            description: "The integration was disabled and its proxy credentials were cleared.",
+          },
+    );
+  };
+
   const updateProviderModelPreferences = (
     instanceId: ProviderInstanceId,
     next: {
@@ -1353,13 +1407,17 @@ export function ProviderSettingsPanel() {
             favorite.provider === row.instanceId ? Result.succeed(favorite.model) : Result.failVoid,
           );
           const resetLabel = driverOption?.label ?? String(row.driver);
-          const headerAction =
-            row.isDefault && row.isDirty ? (
-              <SettingResetButton
-                label={`${resetLabel} provider settings`}
-                onClick={() => resetDefaultInstance(row.driver)}
-              />
-            ) : null;
+          const isClaudeGpt = isClaudeGptProviderConfig(row.instance.config);
+          const headerAction = isClaudeGpt ? (
+            <Badge variant="warning" size="sm">
+              ChatGPT backend · Experimental
+            </Badge>
+          ) : row.isDefault && row.isDirty ? (
+            <SettingResetButton
+              label={`${resetLabel} provider settings`}
+              onClick={() => resetDefaultInstance(row.driver)}
+            />
+          ) : null;
           return (
             <ProviderInstanceCard
               key={row.instanceId}
@@ -1387,7 +1445,13 @@ export function ProviderSettingsPanel() {
                   updateProviderInstance(row, next);
                 }
               }}
-              onDelete={row.isDefault ? undefined : () => deleteProviderInstance(row.instanceId)}
+              onDelete={
+                row.isDefault
+                  ? undefined
+                  : isClaudeGpt
+                    ? () => void removeClaudeGptIntegration()
+                    : () => deleteProviderInstance(row.instanceId)
+              }
               headerAction={headerAction}
               hiddenModels={modelPreferences.hiddenModels}
               favoriteModels={favoriteModels}
@@ -1424,7 +1488,14 @@ export function ProviderSettingsPanel() {
       </SettingsSection>
 
       {isAddInstanceDialogOpen ? (
-        <AddProviderInstanceDialog open onOpenChange={setIsAddInstanceDialogOpen} />
+        <AddProviderInstanceDialog
+          open
+          onOpenChange={setIsAddInstanceDialogOpen}
+          onSetupClaudeGpt={() => setIsClaudeGptSetupOpen(true)}
+        />
+      ) : null}
+      {isClaudeGptSetupOpen ? (
+        <ClaudeCodexProxySetupDialog open onOpenChange={setIsClaudeGptSetupOpen} />
       ) : null}
     </SettingsPageContainer>
   );

@@ -91,6 +91,8 @@ import {
 import { orchestrationHttpApiLayer } from "./orchestration/http.ts";
 import * as NetService from "@t3tools/shared/Net";
 import * as RelayClient from "@t3tools/shared/relayClient";
+import * as ClaudeCodexProxyInstaller from "@t3tools/shared/claudeCodexProxy";
+import * as ClaudeCodexProxyManager from "./provider/Tools/ClaudeCodexProxyManager.ts";
 import { disableTailscaleServe, ensureTailscaleServe } from "@t3tools/tailscale";
 
 // Effect's default preemptive shutdown waits 20s before finalizing request scopes.
@@ -116,6 +118,18 @@ const RelayClientLive = Layer.unwrap(
     const config = yield* ServerConfig.ServerConfig;
     return RelayClient.layerCloudflared({ baseDir: config.baseDir });
   }),
+);
+
+const ClaudeCodexProxyInstallerLive = Layer.unwrap(
+  Effect.gen(function* () {
+    const config = yield* ServerConfig.ServerConfig;
+    return ClaudeCodexProxyInstaller.layerClaudeCodexProxyInstaller({ baseDir: config.baseDir });
+  }),
+);
+
+const ClaudeCodexProxyManagerLive = ClaudeCodexProxyManager.layer.pipe(
+  Layer.provide(ClaudeCodexProxyInstallerLive),
+  Layer.provide(NetService.layer),
 );
 
 const HttpServerLive = Layer.unwrap(
@@ -294,7 +308,7 @@ const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
   Layer.provideMerge(Layer.mergeAll(TerminalLayerLive, PreviewLayerLive)),
   Layer.provideMerge(PersistenceLayerLive),
   Layer.provideMerge(Keybindings.layer),
-  Layer.provideMerge(ProviderRegistryLive),
+  Layer.provideMerge(Layer.merge(ProviderRegistryLive, ClaudeCodexProxyManagerLive)),
   // The instance registry is the new routing keystone — text generation,
   // adapter lookup, and runtime ingestion all resolve `ProviderInstanceId`
   // through this layer. Built-in drivers come from `BUILT_IN_DRIVERS`;

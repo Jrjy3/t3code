@@ -1,5 +1,6 @@
 import {
   type ClaudeSettings,
+  type ClaudeCodexProxyStatus,
   type ModelCapabilities,
   type ModelSelection,
   ProviderDriverKind,
@@ -51,6 +52,43 @@ const CLAUDE_PRESENTATION = {
 const MINIMUM_CLAUDE_FABLE_5_VERSION = "2.1.169";
 const MINIMUM_CLAUDE_OPUS_4_8_VERSION = "2.1.154";
 const MINIMUM_CLAUDE_OPUS_4_7_VERSION = "2.1.111";
+
+function proxyEffortCapabilities(defaultEffort: "low" | "medium" | "high"): ModelCapabilities {
+  return createModelCapabilities({
+    optionDescriptors: [
+      buildSelectOptionDescriptor({
+        id: "effort",
+        label: "Reasoning",
+        options: [
+          { value: "low", label: "Low", isDefault: defaultEffort === "low" },
+          { value: "medium", label: "Medium", isDefault: defaultEffort === "medium" },
+          { value: "high", label: "High", isDefault: defaultEffort === "high" },
+        ],
+      }),
+    ],
+  });
+}
+
+export const CLAUDE_CODEX_PROXY_MODELS: ReadonlyArray<ServerProviderModel> = [
+  {
+    slug: "gpt-5.6-sol",
+    name: "GPT-5.6 Sol",
+    isCustom: false,
+    capabilities: proxyEffortCapabilities("high"),
+  },
+  {
+    slug: "gpt-5.6-terra",
+    name: "GPT-5.6 Terra",
+    isCustom: false,
+    capabilities: proxyEffortCapabilities("medium"),
+  },
+  {
+    slug: "gpt-5.6-luna",
+    name: "GPT-5.6 Luna",
+    isCustom: false,
+    capabilities: proxyEffortCapabilities("low"),
+  },
+];
 
 const BUILT_IN_MODELS: ReadonlyArray<ServerProviderModel> = [
   {
@@ -314,6 +352,7 @@ function formatClaudeOpus47UpgradeMessage(version: string | null): string {
 export function getClaudeModelCapabilities(model: string | null | undefined): ModelCapabilities {
   const slug = model?.trim();
   return (
+    CLAUDE_CODEX_PROXY_MODELS.find((candidate) => candidate.slug === slug)?.capabilities ??
     BUILT_IN_MODELS.find((candidate) => candidate.slug === slug)?.capabilities ??
     DEFAULT_CLAUDE_MODEL_CAPABILITIES
   );
@@ -371,6 +410,9 @@ export function isClaudeUltracodeEffort(effort: string | null | undefined): bool
 }
 
 export function resolveClaudeApiModelId(modelSelection: ModelSelection): string {
+  if (modelSelection.model.startsWith("gpt-5.6-")) {
+    return `${modelSelection.model}[1m]`;
+  }
   switch (getModelSelectionStringOptionValue(modelSelection, "contextWindow")) {
     case "1m":
       return `${modelSelection.model}[1m]`;
@@ -659,6 +701,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     claudeSettings: ClaudeSettings,
   ) => Effect.Effect<ClaudeCapabilitiesProbe | undefined>,
   environment?: NodeJS.ProcessEnv,
+  resolveProxyStatus?: () => Effect.Effect<ClaudeCodexProxyStatus>,
 ): Effect.fn.Return<
   ServerProviderDraft,
   never,
@@ -667,7 +710,9 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
   const resolvedEnvironment = environment ?? process.env;
   const checkedAt = DateTime.formatIso(yield* DateTime.now);
   const allModels = providerModelsFromSettings(
-    BUILT_IN_MODELS,
+    claudeSettings.inferenceBackend === "chatgptCodexProxy"
+      ? CLAUDE_CODEX_PROXY_MODELS
+      : BUILT_IN_MODELS,
     PROVIDER,
     claudeSettings.customModels,
     DEFAULT_CLAUDE_MODEL_CAPABILITIES,
@@ -675,7 +720,10 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
 
   if (!claudeSettings.enabled) {
     return buildServerProvider({
-      presentation: CLAUDE_PRESENTATION,
+      presentation:
+        claudeSettings.inferenceBackend === "chatgptCodexProxy"
+          ? { ...CLAUDE_PRESENTATION, displayName: "Claude + GPT" }
+          : CLAUDE_PRESENTATION,
       enabled: false,
       checkedAt,
       models: allModels,
@@ -757,6 +805,39 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     });
   }
 
+  if (claudeSettings.inferenceBackend === "chatgptCodexProxy") {
+    const proxyStatus = resolveProxyStatus ? yield* resolveProxyStatus() : undefined;
+    const ready =
+      proxyStatus?.installation === "installed" &&
+      proxyStatus.authentication === "signedIn" &&
+      proxyStatus.runtime === "healthy";
+    return buildServerProvider({
+      presentation: { ...CLAUDE_PRESENTATION, displayName: "Claude + GPT" },
+      enabled: claudeSettings.enabled,
+      checkedAt,
+      models: CLAUDE_CODEX_PROXY_MODELS,
+      probe: {
+        installed: true,
+        version: parsedVersion,
+        status: ready ? "ready" : "error",
+        auth: ready
+          ? { status: "authenticated", type: "chatgptCodexProxy", label: "ChatGPT via local proxy" }
+          : { status: "unknown" },
+        ...(!ready
+          ? {
+              message:
+                proxyStatus?.errorMessage ??
+                (proxyStatus?.installation !== "installed"
+                  ? "The managed Claude Code proxy is not installed."
+                  : proxyStatus?.authentication !== "signedIn"
+                    ? "Connect ChatGPT to use Claude + GPT."
+                    : "The local Claude Code proxy is not healthy."),
+            }
+          : {}),
+      },
+    });
+  }
+
   const models = providerModelsFromSettings(
     getBuiltInClaudeModelsForVersion(parsedVersion),
     PROVIDER,
@@ -826,7 +907,9 @@ export const makePendingClaudeProvider = (
   Effect.gen(function* () {
     const checkedAt = yield* nowIso;
     const models = providerModelsFromSettings(
-      BUILT_IN_MODELS,
+      claudeSettings.inferenceBackend === "chatgptCodexProxy"
+        ? CLAUDE_CODEX_PROXY_MODELS
+        : BUILT_IN_MODELS,
       PROVIDER,
       claudeSettings.customModels,
       DEFAULT_CLAUDE_MODEL_CAPABILITIES,
@@ -834,7 +917,10 @@ export const makePendingClaudeProvider = (
 
     if (!claudeSettings.enabled) {
       return buildServerProvider({
-        presentation: CLAUDE_PRESENTATION,
+        presentation:
+          claudeSettings.inferenceBackend === "chatgptCodexProxy"
+            ? { ...CLAUDE_PRESENTATION, displayName: "Claude + GPT" }
+            : CLAUDE_PRESENTATION,
         enabled: false,
         checkedAt,
         models,
@@ -849,7 +935,10 @@ export const makePendingClaudeProvider = (
     }
 
     return buildServerProvider({
-      presentation: CLAUDE_PRESENTATION,
+      presentation:
+        claudeSettings.inferenceBackend === "chatgptCodexProxy"
+          ? { ...CLAUDE_PRESENTATION, displayName: "Claude + GPT" }
+          : CLAUDE_PRESENTATION,
       enabled: true,
       checkedAt,
       models,

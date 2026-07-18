@@ -54,6 +54,7 @@ import {
   type ProviderSnapshotSettings,
 } from "../providerUpdateSettings.ts";
 import { makeClaudeCapabilitiesCacheKey, makeClaudeContinuationGroupKey } from "./ClaudeHome.ts";
+import { ClaudeCodexProxyManager } from "../Tools/ClaudeCodexProxyManager.ts";
 const decodeClaudeSettings = Schema.decodeSync(ClaudeSettings);
 
 const DRIVER_KIND = ProviderDriverKind.make("claudeAgent");
@@ -91,6 +92,23 @@ export type ClaudeDriverEnv =
   | ServerConfig
   | ServerSettingsService;
 
+export function mergeClaudeProxyEnvironment(
+  environment: NodeJS.ProcessEnv,
+  baseUrl: string,
+): NodeJS.ProcessEnv {
+  return {
+    ...environment,
+    ANTHROPIC_BASE_URL: baseUrl,
+    ANTHROPIC_AUTH_TOKEN: "unused",
+    ANTHROPIC_API_KEY: "",
+    ANTHROPIC_MODEL: "gpt-5.6-sol[1m]",
+    ANTHROPIC_SMALL_FAST_MODEL: "gpt-5.6-luna[1m]",
+    CLAUDE_CODE_AUTO_COMPACT_WINDOW: "272000",
+    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+    CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK: "1",
+  };
+}
+
 const withInstanceIdentity =
   (input: {
     readonly instanceId: ProviderInstance["instanceId"];
@@ -123,12 +141,30 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
       const httpClient = yield* HttpClient.HttpClient;
       const serverSettings = yield* ServerSettingsService;
       const eventLoggers = yield* ProviderEventLoggers;
-      const processEnv = mergeProviderInstanceEnvironment(environment);
+      const proxyManager = yield* ClaudeCodexProxyManager;
+      const configuredEnvironment = mergeProviderInstanceEnvironment(environment);
       const fallbackContinuationIdentity = defaultProviderContinuationIdentity({
         driverKind: DRIVER_KIND,
         instanceId,
       });
       const effectiveConfig = { ...config, enabled } satisfies ClaudeSettings;
+      const proxyLease =
+        effectiveConfig.inferenceBackend === "chatgptCodexProxy"
+          ? yield* proxyManager.acquire.pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ProviderDriverError({
+                    driver: DRIVER_KIND,
+                    instanceId,
+                    detail: cause.message,
+                    cause,
+                  }),
+              ),
+            )
+          : undefined;
+      const processEnv = proxyLease
+        ? mergeClaudeProxyEnvironment(configuredEnvironment, proxyLease.baseUrl)
+        : configuredEnvironment;
       const maintenanceCapabilities = yield* resolveProviderMaintenanceCapabilitiesEffect(UPDATE, {
         binaryPath: effectiveConfig.binaryPath,
         env: processEnv,
@@ -165,6 +201,9 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
         effectiveConfig,
         () => Cache.get(capabilitiesProbeCache, capabilitiesCacheKey),
         processEnv,
+        effectiveConfig.inferenceBackend === "chatgptCodexProxy"
+          ? () => proxyManager.refreshStatus
+          : undefined,
       ).pipe(
         Effect.map(stampIdentity),
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),

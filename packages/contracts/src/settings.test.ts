@@ -32,6 +32,15 @@ describe("ClientSettings word wrap", () => {
 });
 
 describe("ServerSettings.providerInstances (slice-2 invariant)", () => {
+  it("defaults legacy Claude settings to the native Anthropic backend", () => {
+    expect(decodeServerSettings({}).providers.claudeAgent.inferenceBackend).toBe("anthropic");
+    expect(
+      decodeServerSettings({
+        providers: { claudeAgent: { inferenceBackend: "chatgptCodexProxy" } },
+      }).providers.claudeAgent.inferenceBackend,
+    ).toBe("chatgptCodexProxy");
+  });
+
   it("defaults to an empty record so legacy configs without the key still decode", () => {
     expect(DEFAULT_SERVER_SETTINGS.providerInstances).toEqual({});
   });

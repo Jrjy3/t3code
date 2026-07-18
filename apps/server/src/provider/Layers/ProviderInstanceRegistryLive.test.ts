@@ -67,6 +67,7 @@ const makeCodexConfig = (overrides: Partial<CodexSettings>): CodexSettings => ({
 
 const makeClaudeConfig = (overrides: Partial<ClaudeSettings>): ClaudeSettings => ({
   enabled: false,
+  inferenceBackend: "anthropic",
   binaryPath: "claude",
   homePath: "",
   customModels: [],

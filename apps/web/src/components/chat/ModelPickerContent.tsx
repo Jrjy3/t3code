@@ -6,7 +6,7 @@ import {
 import { resolveSelectableModel } from "@t3tools/shared/model";
 import { LegendList, type LegendListRef } from "@legendapp/list/react";
 import { memo, useMemo, useState, useCallback, useEffect, useLayoutEffect, useRef } from "react";
-import { SearchIcon } from "lucide-react";
+import { PlusIcon, SearchIcon } from "lucide-react";
 import { ModelListRow } from "./ModelListRow";
 import { ModelPickerSidebar } from "./ModelPickerSidebar";
 import { isModelPickerNewModel } from "./modelPickerModelHighlights";
@@ -28,6 +28,8 @@ import {
   type ProviderInstanceEntry,
 } from "../../providerInstances";
 import { providerModelKey, sortProviderModelItems } from "../../modelOrdering";
+import { Button } from "../ui/button";
+import { ClaudeCodexProxySetupDialog } from "../settings/ClaudeCodexProxySetupDialog";
 
 type ModelPickerItem = {
   slug: string;
@@ -99,6 +101,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   const [searchQuery, setSearchQuery] = useState("");
   const [showTopScrollFade, setShowTopScrollFade] = useState(false);
   const [showBottomScrollFade, setShowBottomScrollFade] = useState(false);
+  const [isClaudeGptSetupOpen, setIsClaudeGptSetupOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const modelListRef = useRef<LegendListRef | null>(null);
   const highlightedModelKeyRef = useRef<string | null>(null);
@@ -118,6 +121,10 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     [providedKeybindings],
   );
   const updateSettings = useUpdateClientSettings();
+  const hasClaudeGptProfile = instanceEntries.some(
+    (entry) =>
+      entry.instanceId.startsWith("claude_chatgpt") || entry.displayName === "Claude + GPT",
+  );
 
   const focusSearchInput = useCallback(() => {
     searchInputRef.current?.focus({ preventScroll: true });
@@ -615,6 +622,18 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                   unstyled
                 />
               </div>
+              {!hasClaudeGptProfile && props.lockedProvider === null ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  className="mt-1 w-full justify-start"
+                  onClick={() => setIsClaudeGptSetupOpen(true)}
+                >
+                  <PlusIcon data-icon="inline-start" />
+                  Set up Claude + GPT
+                </Button>
+              ) : null}
             </div>
 
             {/* Model list */}
@@ -671,6 +690,17 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
             </ComboboxEmpty>
           </div>
         </Combobox>
+        {isClaudeGptSetupOpen ? (
+          <ClaudeCodexProxySetupDialog
+            open
+            launchContext="composer"
+            onOpenChange={setIsClaudeGptSetupOpen}
+            onComplete={(instanceId) => {
+              onInstanceModelChange(instanceId, "gpt-5.6-sol");
+              props.onRequestClose?.();
+            }}
+          />
+        ) : null}
       </div>
     </TooltipProvider>
   );

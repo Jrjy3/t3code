@@ -35,9 +35,13 @@ export const makeClaudeEnvironment = Effect.fn("makeClaudeEnvironment")(function
 });
 
 export const makeClaudeContinuationGroupKey = Effect.fn("makeClaudeContinuationGroupKey")(
-  function* (config: Pick<ClaudeSettings, "homePath">): Effect.fn.Return<string, never, Path.Path> {
+  function* (
+    config: Pick<ClaudeSettings, "homePath"> & Partial<Pick<ClaudeSettings, "inferenceBackend">>,
+  ): Effect.fn.Return<string, never, Path.Path> {
     const resolvedHomePath = yield* resolveClaudeHomePath(config);
-    return `claude:home:${resolvedHomePath}`;
+    return config.inferenceBackend === "chatgptCodexProxy"
+      ? `claude:backend:chatgpt-codex-proxy:home:${resolvedHomePath}`
+      : `claude:home:${resolvedHomePath}`;
   },
 );
 

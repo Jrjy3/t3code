@@ -17,6 +17,7 @@ import { AsyncResult, Atom } from "effect/unstable/reactivity";
 import {
   createAtomCommandScheduler,
   createEnvironmentRpcCommand,
+  createEnvironmentRpcStreamCommand,
   createEnvironmentRpcQueryAtomFamily,
   createEnvironmentRpcSubscriptionAtomFamily,
 } from "./runtime.ts";
@@ -342,6 +343,28 @@ export function createServerEnvironmentAtoms<R, E>(
     signalProcess: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:signal-process",
       tag: WS_METHODS.serverSignalProcess,
+    }),
+    claudeCodexProxyGetStatus: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:claude-codex-proxy:get-status",
+      tag: WS_METHODS.claudeCodexProxyGetStatus,
+    }),
+    claudeCodexProxyRefreshStatus: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:claude-codex-proxy:refresh-status",
+      tag: WS_METHODS.claudeCodexProxyRefreshStatus,
+    }),
+    claudeCodexProxyInstall: createEnvironmentRpcStreamCommand(runtime, {
+      label: "environment-data:claude-codex-proxy:install",
+      tag: WS_METHODS.claudeCodexProxyInstall,
+      concurrency: { mode: "singleFlight", key: ({ environmentId }) => environmentId },
+    }),
+    claudeCodexProxyLogin: createEnvironmentRpcStreamCommand(runtime, {
+      label: "environment-data:claude-codex-proxy:login",
+      tag: WS_METHODS.claudeCodexProxyLogin,
+      concurrency: { mode: "singleFlight", key: ({ environmentId }) => environmentId },
+    }),
+    claudeCodexProxyLogout: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:claude-codex-proxy:logout",
+      tag: WS_METHODS.claudeCodexProxyLogout,
     }),
   };
 }

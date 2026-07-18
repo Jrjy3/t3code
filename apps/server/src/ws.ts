@@ -45,6 +45,9 @@ import {
   ProjectWriteFileError,
   RelayClientInstallFailedError,
   type RelayClientInstallProgressEvent,
+  ClaudeCodexProxyError,
+  type ClaudeCodexProxyInstallProgressEvent,
+  type ClaudeCodexProxyLoginProgressEvent,
   OrchestrationReplayEventsError,
   type FilesystemBrowseFailure,
   FilesystemBrowseError,
@@ -114,6 +117,7 @@ import * as PairingGrantStore from "./auth/PairingGrantStore.ts";
 import * as SessionStore from "./auth/SessionStore.ts";
 import { failEnvironmentAuthInvalid, failEnvironmentInternal } from "./auth/http.ts";
 import * as RelayClient from "@t3tools/shared/relayClient";
+import * as ClaudeCodexProxyManager from "./provider/Tools/ClaudeCodexProxyManager.ts";
 const isOrchestrationDispatchCommandError = Schema.is(OrchestrationDispatchCommandError);
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
@@ -298,6 +302,11 @@ const RPC_REQUIRED_SCOPE = new Map<string, AuthEnvironmentScope>([
   [WS_METHODS.serverSignalProcess, AuthOrchestrationOperateScope],
   [WS_METHODS.cloudGetRelayClientStatus, AuthRelayWriteScope],
   [WS_METHODS.cloudInstallRelayClient, AuthRelayWriteScope],
+  [WS_METHODS.claudeCodexProxyGetStatus, AuthOrchestrationReadScope],
+  [WS_METHODS.claudeCodexProxyInstall, AuthOrchestrationOperateScope],
+  [WS_METHODS.claudeCodexProxyLogin, AuthOrchestrationOperateScope],
+  [WS_METHODS.claudeCodexProxyLogout, AuthOrchestrationOperateScope],
+  [WS_METHODS.claudeCodexProxyRefreshStatus, AuthOrchestrationReadScope],
   [WS_METHODS.sourceControlLookupRepository, AuthOrchestrationReadScope],
   [WS_METHODS.sourceControlCloneRepository, AuthOrchestrationOperateScope],
   [WS_METHODS.sourceControlPublishRepository, AuthOrchestrationOperateScope],
@@ -436,6 +445,7 @@ const makeWsRpcLayer = (
       const processDiagnostics = yield* ProcessDiagnostics.ProcessDiagnostics;
       const processResourceMonitor = yield* ProcessResourceMonitor.ProcessResourceMonitor;
       const relayClient = yield* RelayClient.RelayClient;
+      const claudeCodexProxy = yield* ClaudeCodexProxyManager.ClaudeCodexProxyManager;
       const authorizationError = (requiredScope: AuthEnvironmentScope) =>
         new EnvironmentAuthorizationError({
           message: `The authenticated token is missing required scope: ${requiredScope}.`,
@@ -1365,6 +1375,50 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "cloud" },
           ),
+        [WS_METHODS.claudeCodexProxyGetStatus]: (_input) =>
+          observeRpcEffect(WS_METHODS.claudeCodexProxyGetStatus, claudeCodexProxy.getStatus, {
+            "rpc.aggregate": "provider-tools",
+          }),
+        [WS_METHODS.claudeCodexProxyRefreshStatus]: (_input) =>
+          observeRpcEffect(
+            WS_METHODS.claudeCodexProxyRefreshStatus,
+            claudeCodexProxy.refreshStatus,
+            { "rpc.aggregate": "provider-tools" },
+          ),
+        [WS_METHODS.claudeCodexProxyInstall]: (_input) =>
+          observeRpcStream(
+            WS_METHODS.claudeCodexProxyInstall,
+            Stream.callback<ClaudeCodexProxyInstallProgressEvent, ClaudeCodexProxyError>((queue) =>
+              claudeCodexProxy
+                .install((event) => Queue.offer(queue, event).pipe(Effect.asVoid))
+                .pipe(
+                  Effect.flatMap((status) => Queue.offer(queue, { type: "complete", status })),
+                  Effect.catch((error) => Queue.fail(queue, error)),
+                  Effect.andThen(Queue.end(queue)),
+                  Effect.forkScoped,
+                ),
+            ),
+            { "rpc.aggregate": "provider-tools" },
+          ),
+        [WS_METHODS.claudeCodexProxyLogin]: (_input) =>
+          observeRpcStream(
+            WS_METHODS.claudeCodexProxyLogin,
+            Stream.callback<ClaudeCodexProxyLoginProgressEvent, ClaudeCodexProxyError>((queue) =>
+              claudeCodexProxy
+                .login((event) => Queue.offer(queue, event).pipe(Effect.asVoid))
+                .pipe(
+                  Effect.flatMap((status) => Queue.offer(queue, { type: "complete", status })),
+                  Effect.catch((error) => Queue.fail(queue, error)),
+                  Effect.andThen(Queue.end(queue)),
+                  Effect.forkScoped,
+                ),
+            ),
+            { "rpc.aggregate": "provider-tools" },
+          ),
+        [WS_METHODS.claudeCodexProxyLogout]: (_input) =>
+          observeRpcEffect(WS_METHODS.claudeCodexProxyLogout, claudeCodexProxy.logout, {
+            "rpc.aggregate": "provider-tools",
+          }),
         [WS_METHODS.sourceControlLookupRepository]: (input) =>
           observeRpcEffect(
             WS_METHODS.sourceControlLookupRepository,

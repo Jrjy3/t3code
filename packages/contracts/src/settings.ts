@@ -208,6 +208,10 @@ export const ClaudeSettings = makeProviderSettingsSchema(
       Schema.withDecodingDefault(Effect.succeed(true)),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
+    inferenceBackend: Schema.Literals(["anthropic", "chatgptCodexProxy"]).pipe(
+      Schema.withDecodingDefault(Effect.succeed("anthropic" as const)),
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
     binaryPath: makeBinaryPathSetting("claude").pipe(
       Schema.annotateKey({
         title: "Binary path",

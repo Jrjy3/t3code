@@ -159,6 +159,10 @@
       "types": "./src/relayClient.ts",
       "import": "./src/relayClient.ts"
     },
+    "./claudeCodexProxy": {
+      "types": "./src/claudeCodexProxy.ts",
+      "import": "./src/claudeCodexProxy.ts"
+    },
     "./relayTracing": {
       "types": "./src/relayTracing.ts",
       "import": "./src/relayTracing.ts"
@@ -197,6 +201,7 @@
     "@noble/hashes": "catalog:",
     "@t3tools/contracts": "workspace:*",
     "effect": "catalog:",
+    "extract-zip": "2.0.1",
     "jose": "catalog:",
     "yaml": "catalog:"
   },

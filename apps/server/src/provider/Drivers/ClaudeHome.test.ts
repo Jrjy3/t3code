@@ -58,5 +58,21 @@ it.layer(NodeServices.layer)("ClaudeHome", (it) => {
         );
       }),
     );
+
+    it.effect("isolates native Claude and the ChatGPT proxy backend", () =>
+      Effect.gen(function* () {
+        const config = { homePath: "~/.claude-work" };
+        const native = yield* makeClaudeContinuationGroupKey({
+          ...config,
+          inferenceBackend: "anthropic",
+        });
+        const proxy = yield* makeClaudeContinuationGroupKey({
+          ...config,
+          inferenceBackend: "chatgptCodexProxy",
+        });
+        expect(proxy).not.toBe(native);
+        expect(proxy).toContain("claude:backend:chatgpt-codex-proxy:home:");
+      }),
+    );
   });
 });

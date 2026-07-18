@@ -65,6 +65,12 @@ import {
   RelayClientStatusSchema,
 } from "./relayClient.ts";
 import {
+  ClaudeCodexProxyError,
+  ClaudeCodexProxyInstallProgressEvent,
+  ClaudeCodexProxyLoginProgressEvent,
+  ClaudeCodexProxyStatus,
+} from "./claudeCodexProxy.ts";
+import {
   ProjectListEntriesError,
   ProjectListEntriesInput,
   ProjectListEntriesResult,
@@ -218,6 +224,13 @@ export const WS_METHODS = {
   cloudGetRelayClientStatus: "cloud.getRelayClientStatus",
   cloudInstallRelayClient: "cloud.installRelayClient",
 
+  // Managed Claude Code + ChatGPT Codex proxy
+  claudeCodexProxyGetStatus: "claudeCodexProxy.getStatus",
+  claudeCodexProxyInstall: "claudeCodexProxy.install",
+  claudeCodexProxyLogin: "claudeCodexProxy.login",
+  claudeCodexProxyLogout: "claudeCodexProxy.logout",
+  claudeCodexProxyRefreshStatus: "claudeCodexProxy.refreshStatus",
+
   // Source control methods
   sourceControlLookupRepository: "sourceControl.lookupRepository",
   sourceControlCloneRepository: "sourceControl.cloneRepository",
@@ -329,6 +342,41 @@ export const WsCloudInstallRelayClientRpc = Rpc.make(WS_METHODS.cloudInstallRela
   error: Schema.Union([RelayClientInstallFailedError, EnvironmentAuthorizationError]),
   stream: true,
 });
+
+export const WsClaudeCodexProxyGetStatusRpc = Rpc.make(WS_METHODS.claudeCodexProxyGetStatus, {
+  payload: Schema.Struct({}),
+  success: ClaudeCodexProxyStatus,
+  error: EnvironmentAuthorizationError,
+});
+
+export const WsClaudeCodexProxyInstallRpc = Rpc.make(WS_METHODS.claudeCodexProxyInstall, {
+  payload: Schema.Struct({}),
+  success: ClaudeCodexProxyInstallProgressEvent,
+  error: Schema.Union([ClaudeCodexProxyError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
+export const WsClaudeCodexProxyLoginRpc = Rpc.make(WS_METHODS.claudeCodexProxyLogin, {
+  payload: Schema.Struct({}),
+  success: ClaudeCodexProxyLoginProgressEvent,
+  error: Schema.Union([ClaudeCodexProxyError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
+export const WsClaudeCodexProxyLogoutRpc = Rpc.make(WS_METHODS.claudeCodexProxyLogout, {
+  payload: Schema.Struct({}),
+  success: ClaudeCodexProxyStatus,
+  error: Schema.Union([ClaudeCodexProxyError, EnvironmentAuthorizationError]),
+});
+
+export const WsClaudeCodexProxyRefreshStatusRpc = Rpc.make(
+  WS_METHODS.claudeCodexProxyRefreshStatus,
+  {
+    payload: Schema.Struct({}),
+    success: ClaudeCodexProxyStatus,
+    error: EnvironmentAuthorizationError,
+  },
+);
 
 export const WsSourceControlLookupRepositoryRpc = Rpc.make(
   WS_METHODS.sourceControlLookupRepository,
@@ -696,6 +744,11 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerSignalProcessRpc,
   WsCloudGetRelayClientStatusRpc,
   WsCloudInstallRelayClientRpc,
+  WsClaudeCodexProxyGetStatusRpc,
+  WsClaudeCodexProxyInstallRpc,
+  WsClaudeCodexProxyLoginRpc,
+  WsClaudeCodexProxyLogoutRpc,
+  WsClaudeCodexProxyRefreshStatusRpc,
   WsSourceControlLookupRepositoryRpc,
   WsSourceControlCloneRepositoryRpc,
   WsSourceControlPublishRepositoryRpc,

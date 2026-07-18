@@ -111,9 +111,14 @@ function validateInstanceId(id: string, existing: ReadonlySet<string>): string |
 interface AddProviderInstanceDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onSetupClaudeGpt?: () => void;
 }
 
-export function AddProviderInstanceDialog({ open, onOpenChange }: AddProviderInstanceDialogProps) {
+export function AddProviderInstanceDialog({
+  open,
+  onOpenChange,
+  onSetupClaudeGpt,
+}: AddProviderInstanceDialogProps) {
   const settings = usePrimarySettings();
   const updateSettings = useUpdatePrimarySettings();
 
@@ -264,6 +269,22 @@ export function AddProviderInstanceDialog({ open, onOpenChange }: AddProviderIns
                 </button>
               ))}
             </div>
+            {wizardStep === 0 && onSetupClaudeGpt ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  onOpenChange(false);
+                  onSetupClaudeGpt();
+                }}
+              >
+                Set up Claude + GPT
+                <Badge variant="warning" size="sm">
+                  Experimental
+                </Badge>
+              </Button>
+            ) : null}
           </DialogHeader>
 
           <div
