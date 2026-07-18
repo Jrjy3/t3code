@@ -94,7 +94,25 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     const version = "0.0.29-harness-switching.1";
     assert.equal(resolveDesktopProductName(version), "T3 Code - Harness Switching");
     assert.equal(resolveDesktopAppId(version), "com.t3tools.t3code.harnessswitching");
+    assert.equal(resolveDesktopUpdateChannel(version), "nightly");
   });
+
+  it.effect("publishes Harness Switching prereleases to the fork's dedicated updater feed", () =>
+    Effect.gen(function* () {
+      const publishConfig = yield* resolveGitHubPublishConfig(
+        "nightly",
+        "0.0.29-harness-switching.1",
+      );
+
+      assert.deepStrictEqual(publishConfig, {
+        provider: "github",
+        owner: "Jrjy3",
+        repo: "t3code",
+        releaseType: "prerelease",
+        channel: "nightly",
+      });
+    }).pipe(Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })))),
+  );
 
   it("switches desktop packaging icons to the nightly artwork for nightly versions", () => {
     assert.deepStrictEqual(resolveDesktopBuildIconAssets("0.0.17"), {

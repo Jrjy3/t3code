@@ -1303,7 +1303,17 @@ export function resolveDesktopRuntimeDependencies(
 
 export const resolveGitHubPublishConfig = Effect.fn("resolveGitHubPublishConfig")(function* (
   updateChannel: "latest" | "nightly",
+  version?: string,
 ) {
+  if (version !== undefined && isHarnessSwitchingDesktopVersion(version)) {
+    return {
+      provider: "github" as const,
+      owner: "Jrjy3",
+      repo: "t3code",
+      releaseType: "prerelease" as const,
+      channel: "nightly" as const,
+    };
+  }
   const env = yield* Config.all({
     updateRepository: Config.string("T3CODE_DESKTOP_UPDATE_REPOSITORY").pipe(Config.option),
     githubRepository: Config.string("GITHUB_REPOSITORY").pipe(Config.option),
@@ -1328,7 +1338,9 @@ export const resolveGitHubPublishConfig = Effect.fn("resolveGitHubPublishConfig"
 });
 
 export function resolveDesktopUpdateChannel(version: string): "latest" | "nightly" {
-  return /-nightly\.\d{8}\.\d+$/.test(version) ? "nightly" : "latest";
+  return /-nightly\.\d{8}\.\d+$/.test(version) || isHarnessSwitchingDesktopVersion(version)
+    ? "nightly"
+    : "latest";
 }
 
 export function isHarnessSwitchingDesktopVersion(version: string): boolean {
@@ -1342,11 +1354,17 @@ export function resolveDesktopAppId(version: string): string {
 }
 
 export function resolveDesktopWebAssetBrand(version: string): WebAssetBrand {
+  if (isHarnessSwitchingDesktopVersion(version)) {
+    return resolveWebAssetBrandForChannel("latest");
+  }
   return resolveWebAssetBrandForChannel(resolveDesktopUpdateChannel(version));
 }
 
 export function resolveDesktopBuildIconAssets(version: string): DesktopBuildIconAssets {
-  if (resolveDesktopUpdateChannel(version) === "nightly") {
+  if (
+    resolveDesktopUpdateChannel(version) === "nightly" &&
+    !isHarnessSwitchingDesktopVersion(version)
+  ) {
     return {
       macIconPng: BRAND_ASSET_PATHS.nightlyMacIconPng,
       linuxIconPng: BRAND_ASSET_PATHS.nightlyLinuxIconPng,
@@ -1426,7 +1444,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
     asarUnpack: [...DESKTOP_ASAR_UNPACK, "apps/server/dist/**", "**/node_modules/**"],
   };
   const updateChannel = resolveDesktopUpdateChannel(version);
-  const publishConfig = yield* resolveGitHubPublishConfig(updateChannel);
+  const publishConfig = yield* resolveGitHubPublishConfig(updateChannel, version);
   if (publishConfig) {
     buildConfig.publish = [publishConfig];
   } else if (mockUpdates) {
